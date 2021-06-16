@@ -44,6 +44,8 @@ func startSendTasks() {
 	tsdbConcurrent := cfg.Tsdb.MaxConns
 	transferConcurrent := cfg.Transfer.MaxConns
 	influxdbConcurrent := cfg.Influxdb.MaxConns
+	tdengineConcurrent := cfg.TDengine.MaxConns
+	tdengineBlmConcurrent := cfg.TDengineBLM.MaxConns
 
 	if tsdbConcurrent < 1 {
 		tsdbConcurrent = 1
@@ -89,6 +91,14 @@ func startSendTasks() {
 
 	if cfg.Influxdb.Enabled {
 		go forward2InfluxdbTask(influxdbConcurrent)
+	}
+
+	if cfg.TDengine.Enabled {
+		go forward2TDengineTask(tdengineConcurrent)
+	}
+
+	if cfg.TDengineBLM.Enabled {
+		go forward2TDengineBLMTask(tdengineBlmConcurrent)
 	}
 }
 
@@ -306,6 +316,14 @@ func convert(v *cmodel.MetaData) *cmodel.MetricValue {
 		Tags:      cutils.SortedTags(v.Tags),
 		Value:     v.Value,
 	}
+}
+
+func forward2TDengineTask(concurrent int) {
+	log.Printf("%d", concurrent)
+}
+
+func forward2TDengineBLMTask(concurrent int) {
+	log.Printf("%d", concurrent)
 }
 
 func forward2InfluxdbTask(concurrent int) {

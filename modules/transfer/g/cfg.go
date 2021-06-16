@@ -98,17 +98,41 @@ type InfluxdbConfig struct {
 	Precision string `json:"precision"`
 }
 
+type TDengineConfig struct {
+	Enabled   bool   `json:"enabled"`
+	MaxConns  int    `json:"maxConns"`
+	Address   string `json:"address"`
+	Port      string `json:"port"`
+	Database  string `json:"db"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Precision string `json:"precision"`
+}
+
+type TDengineBLMConfig struct {
+	Enabled   bool   `json:"enabled"`
+	MaxConns  int    `json:"maxConns"`
+	Address   string `json:"address"`
+	Port      string `json:"port"`
+	Database  string `json:"db"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Precision string `json:"precision"`
+}
+
 type GlobalConfig struct {
-	Debug    bool            `json:"debug"`
-	MinStep  int             `json:"minStep"` //最小周期,单位sec
-	Http     *HttpConfig     `json:"http"`
-	Rpc      *RpcConfig      `json:"rpc"`
-	Socket   *SocketConfig   `json:"socket"`
-	Judge    *JudgeConfig    `json:"judge"`
-	Graph    *GraphConfig    `json:"graph"`
-	Tsdb     *TsdbConfig     `json:"tsdb"`
-	Transfer *TransferConfig `json:"transfer"`
-	Influxdb *InfluxdbConfig `json:"influxdb"`
+	Debug       bool               `json:"debug"`
+	MinStep     int                `json:"minStep"` //最小周期,单位sec
+	Http        *HttpConfig        `json:"http"`
+	Rpc         *RpcConfig         `json:"rpc"`
+	Socket      *SocketConfig      `json:"socket"`
+	Judge       *JudgeConfig       `json:"judge"`
+	Graph       *GraphConfig       `json:"graph"`
+	Tsdb        *TsdbConfig        `json:"tsdb"`
+	Transfer    *TransferConfig    `json:"transfer"`
+	Influxdb    *InfluxdbConfig    `json:"influxdb"`
+	TDengine    *TDengineConfig    `json:"tdengine"`
+	TDengineBLM *TDengineBLMConfig `json:"tdengineblm"`
 }
 
 var (

@@ -47,11 +47,13 @@ var (
 // 发送缓存队列
 // node -> queue_of_data
 var (
-	TsdbQueue     *nlist.SafeListLimited
-	JudgeQueues   = make(map[string]*nlist.SafeListLimited)
-	GraphQueues   = make(map[string]*nlist.SafeListLimited)
-	TransferQueue *nlist.SafeListLimited
-	InfluxdbQueue *nlist.SafeListLimited
+	TsdbQueue        *nlist.SafeListLimited
+	JudgeQueues      = make(map[string]*nlist.SafeListLimited)
+	GraphQueues      = make(map[string]*nlist.SafeListLimited)
+	TransferQueue    *nlist.SafeListLimited
+	InfluxdbQueue    *nlist.SafeListLimited
+	TDengineQueue    *nlist.SafeListLimited
+	TDengineBLMQueue *nlist.SafeListLimited
 )
 
 // transfer的主机列表，以及主机名和地址的映射关系
@@ -282,6 +284,16 @@ func Push2TransferSendQueue(items []*cmodel.MetaData) {
 			proc.SendToTransferDropCnt.Incr()
 		}
 	}
+}
+
+// 将原始数据插入到influxdb缓存队列
+func Push2TDengineSendQueue(items []*cmodel.MetaData) {
+	log.Println("Push2TDengineSendQueue")
+}
+
+// 将原始数据插入到influxdb缓存队列
+func Push2TDengineBLMSendQueue(items []*cmodel.MetaData) {
+	log.Println("Push2TDengineBLMSendQueue")
 }
 
 // 将原始数据插入到influxdb缓存队列

@@ -169,6 +169,14 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 		sender.Push2InfluxdbSendQueue(items)
 	}
 
+	if cfg.TDengine.Enabled {
+		sender.Push2TDengineSendQueue(items)
+	}
+
+	if cfg.TDengineBLM.Enabled {
+		sender.Push2TDengineBLMSendQueue(items)
+	}
+
 	reply.Message = "ok"
 	reply.Total = len(args)
 	reply.Latency = (time.Now().UnixNano() - start.UnixNano()) / 1000000
