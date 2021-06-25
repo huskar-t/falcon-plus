@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"log"
 
+	"bytes"
+	"encoding/json"
 	"github.com/influxdata/influxdb/client/v2"
 	backend "github.com/open-falcon/falcon-plus/common/backend_pool"
 	cmodel "github.com/open-falcon/falcon-plus/common/model"
@@ -25,6 +27,8 @@ import (
 	"github.com/open-falcon/falcon-plus/modules/transfer/proc"
 	rings "github.com/toolkits/consistent/rings"
 	nlist "github.com/toolkits/container/list"
+	"io/ioutil"
+	"net/http"
 	"time"
 )
 
@@ -287,13 +291,47 @@ func Push2TransferSendQueue(items []*cmodel.MetaData) {
 }
 
 // 将原始数据插入到influxdb缓存队列
-func Push2TDengineSendQueue(items []*cmodel.MetaData) {
-	log.Println("Push2TDengineSendQueue")
+func Post2TDengineSendQueue(items []*cmodel.MetricValue) {
+	log.Println("Post2TDengineSendQueue")
 }
 
 // 将原始数据插入到influxdb缓存队列
-func Push2TDengineBLMSendQueue(items []*cmodel.MetaData) {
-	log.Println("Push2TDengineBLMSendQueue")
+func Post2TDengineBLMSendQueue(args []*cmodel.MetricValue, from string) {
+	url := g.Config().TDengineBLM.Address + ":" + g.Config().TDengineBLM.Port + "/openfalcon"
+
+	for _, v := range args {
+		jsonStr, err := json.Marshal(v)
+		if err != nil {
+			log.Println("json Marshal error!")
+			return
+		}
+
+		var prettyJson bytes.Buffer
+		error := json.Indent(&prettyJson, jsonStr, "", "\t")
+		if error != nil {
+			log.Println("json indent error")
+			return
+		}
+		log.Println("json:", string(prettyJson.Bytes()))
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		req.Header.Set("X-Custom-Header", "open-falcon2blm")
+		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Println("http request send error")
+			return
+		}
+		defer resp.Body.Close()
+
+		fmt.Println("response Status:", resp.Status)
+		fmt.Println("response Headers:", resp.Header)
+		body, _ := ioutil.ReadAll(resp.Body)
+		fmt.Println("response Body:", string(body))
+	}
+	log.Println("Post2TDengineBLMSendQueue from:", from, " url:", url)
 }
 
 // 将原始数据插入到influxdb缓存队列

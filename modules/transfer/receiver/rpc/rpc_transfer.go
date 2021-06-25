@@ -57,6 +57,16 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 	start := time.Now()
 	reply.Invalid = 0
 
+	cfg := g.Config()
+
+	if cfg.TDengine.Enabled {
+		sender.Post2TDengineSendQueue(args)
+	}
+
+	if cfg.TDengineBLM.Enabled {
+		sender.Post2TDengineBLMSendQueue(args, from)
+	}
+
 	items := []*cmodel.MetaData{}
 	for _, v := range args {
 		if v == nil {
@@ -147,8 +157,6 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 		proc.HttpRecvCnt.IncrBy(cnt)
 	}
 
-	cfg := g.Config()
-
 	if cfg.Graph.Enabled {
 		sender.Push2GraphSendQueue(items)
 	}
@@ -167,14 +175,6 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 
 	if cfg.Influxdb.Enabled {
 		sender.Push2InfluxdbSendQueue(items)
-	}
-
-	if cfg.TDengine.Enabled {
-		sender.Push2TDengineSendQueue(items)
-	}
-
-	if cfg.TDengineBLM.Enabled {
-		sender.Push2TDengineBLMSendQueue(items)
 	}
 
 	reply.Message = "ok"
