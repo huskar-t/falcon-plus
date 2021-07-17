@@ -64,6 +64,12 @@ type GlobalConfig struct {
 		Replicas    int               `json:"replicas"`
 		Cluster     map[string]string `json:"cluster"`
 	} `json:"migrate"`
+	TDengineBLM *TDengineBLMConfig `json:"tdengine"`
+}
+
+type TDengineBLMConfig struct {
+	Enabled bool   `json:"enabled"`
+	Address string `json:"address"`
 }
 
 var (
@@ -100,7 +106,12 @@ func ParseConfig(cfg string) {
 	if c.Migrate.Enabled && len(c.Migrate.Cluster) == 0 {
 		c.Migrate.Enabled = false
 	}
-
+	if c.TDengineBLM == nil {
+		c.TDengineBLM = &TDengineBLMConfig{
+			Enabled: false,
+			Address: "",
+		}
+	}
 	// 确保ioWorkerNum是2^N
 	if c.IOWorkerNum == 0 || (c.IOWorkerNum&(c.IOWorkerNum-1) != 0) {
 		log.Fatalf("IOWorkerNum must be 2^N, current IOWorkerNum is %v", c.IOWorkerNum)

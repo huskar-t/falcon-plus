@@ -98,26 +98,12 @@ type InfluxdbConfig struct {
 	Precision string `json:"precision"`
 }
 
-type TDengineConfig struct {
-	Enabled   bool   `json:"enabled"`
-	MaxConns  int    `json:"maxConns"`
-	Address   string `json:"address"`
-	Port      string `json:"port"`
-	Database  string `json:"db"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	Precision string `json:"precision"`
-}
-
 type TDengineBLMConfig struct {
-	Enabled   bool   `json:"enabled"`
-	MaxConns  int    `json:"maxConns"`
-	Address   string `json:"address"`
-	Port      string `json:"port"`
-	Database  string `json:"db"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	Precision string `json:"precision"`
+	Enabled  bool   `json:"enabled"`
+	Batch    int    `json:"batch"`
+	MaxRetry int    `json:"retry"`
+	MaxConns int    `json:"maxConns"`
+	Address  string `json:"address"`
 }
 
 type GlobalConfig struct {
@@ -131,8 +117,7 @@ type GlobalConfig struct {
 	Tsdb        *TsdbConfig        `json:"tsdb"`
 	Transfer    *TransferConfig    `json:"transfer"`
 	Influxdb    *InfluxdbConfig    `json:"influxdb"`
-	TDengine    *TDengineConfig    `json:"tdengine"`
-	TDengineBLM *TDengineBLMConfig `json:"tdengineblm"`
+	TDengineBLM *TDengineBLMConfig `json:"tdengine"`
 }
 
 var (
@@ -172,7 +157,15 @@ func ParseConfig(cfg string) {
 	// split cluster config
 	c.Judge.ClusterList = formatClusterItems(c.Judge.Cluster)
 	c.Graph.ClusterList = formatClusterItems(c.Graph.Cluster)
-
+	if c.Tsdb == nil {
+		c.Tsdb = &TsdbConfig{}
+	}
+	if c.Influxdb == nil {
+		c.Influxdb = &InfluxdbConfig{}
+	}
+	if c.TDengineBLM == nil {
+		c.TDengineBLM = &TDengineBLMConfig{}
+	}
 	configLock.Lock()
 	defer configLock.Unlock()
 	config = &c

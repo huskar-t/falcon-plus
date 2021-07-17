@@ -59,14 +59,6 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 
 	cfg := g.Config()
 
-	if cfg.TDengine.Enabled {
-		sender.Post2TDengineSendQueue(args)
-	}
-
-	if cfg.TDengineBLM.Enabled {
-		sender.Post2TDengineBLMSendQueue(args, from)
-	}
-
 	items := []*cmodel.MetaData{}
 	for _, v := range args {
 		if v == nil {
@@ -155,6 +147,10 @@ func RecvMetricValues(args []*cmodel.MetricValue, reply *cmodel.TransferResponse
 		proc.RpcRecvCnt.IncrBy(cnt)
 	} else if from == "http" {
 		proc.HttpRecvCnt.IncrBy(cnt)
+	}
+
+	if cfg.TDengineBLM.Enabled {
+		sender.Post2TDengineBLMSendQueue(args)
 	}
 
 	if cfg.Graph.Enabled {

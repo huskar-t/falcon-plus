@@ -15,8 +15,12 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
+	"net/http"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -124,6 +128,11 @@ func handleItems(items []*cmodel.GraphItem) {
 	}
 }
 
+type FloatValueResponse struct {
+	Timestamp int64    `json:"timestamp"`
+	Value     *float64 `json:"value"`
+}
+
 func (this *Graph) Query(param cmodel.GraphQueryParam, resp *cmodel.GraphQueryResponse) error {
 	var (
 		datas      []*cmodel.RRDData
@@ -151,160 +160,199 @@ func (this *Graph) Query(param cmodel.GraphQueryParam, resp *cmodel.GraphQueryRe
 	if end_ts-start_ts-int64(step) < 1 {
 		return nil
 	}
-
-	md5 := cutils.Md5(param.Endpoint + "/" + param.Counter)
-	key := g.FormRrdCacheKey(md5, dsType, step)
-	filename := g.RrdFileName(cfg.RRD.Storage, md5, dsType, step)
-
-	// read cached items
-	items, flag := store.GraphItems.FetchAll(key)
-	items_size := len(items)
-
-	if cfg.Migrate.Enabled && flag&g.GRAPH_F_MISS != 0 {
-		node, _ := rrdtool.Consistent.Get(param.Endpoint + "/" + param.Counter)
-		done := make(chan error, 1)
-		res := &cmodel.GraphAccurateQueryResponse{}
-		rrdtool.Net_task_ch[node] <- &rrdtool.Net_task_t{
-			Method: rrdtool.NET_TASK_M_QUERY,
-			Done:   done,
-			Args:   param,
-			Reply:  res,
+	if cfg.TDengineBLM.Enabled {
+		param.Step = step
+		d, _ := json.Marshal(param)
+		r, err := http.Post(cfg.TDengineBLM.Address+"/api/v1/graphQuery", "application/json; charset=UTF-8", bytes.NewReader(d))
+		if err != nil {
+			log.Print(err)
+			return err
 		}
-		<-done
-		// fetch data from remote
-		datas = res.Values
-		datas_size = len(datas)
+		defer r.Body.Close()
+		if r.StatusCode == 200 {
+			var responseValue []*FloatValueResponse
+			err = json.NewDecoder(r.Body).Decode(&responseValue)
+			if err != nil {
+				log.Error(err)
+				return err
+			}
+			var values []*cmodel.RRDData
+			for _, response := range responseValue {
+				rrdData := &cmodel.RRDData{
+					Timestamp: response.Timestamp,
+				}
+				if response.Value == nil {
+					rrdData.Value = cmodel.JsonFloat(math.NaN())
+				} else {
+					rrdData.Value = cmodel.JsonFloat(*response.Value)
+				}
+				values = append(values, rrdData)
+			}
+			resp.Values = values
+			goto _RETURN_OK
+		} else {
+			b, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("query tdengine error code: %d body: %s", r.StatusCode, string(b))
+		}
 	} else {
-		// read data from rrd file
-		// 从RRD中获取数据不包含起始时间点
-		// 例: start_ts=1484651400,step=60,则第一个数据时间为1484651460)
-		datas, _ = rrdtool.Fetch(filename, md5, param.ConsolFun, start_ts-int64(step), end_ts, step)
-		datas_size = len(datas)
-	}
 
-	nowTs := time.Now().Unix()
-	lastUpTs := nowTs - nowTs%int64(step)
-	rra1StartTs := lastUpTs - int64(rrdtool.RRA1PointCnt*step)
+		md5 := cutils.Md5(param.Endpoint + "/" + param.Counter)
+		key := g.FormRrdCacheKey(md5, dsType, step)
+		filename := g.RrdFileName(cfg.RRD.Storage, md5, dsType, step)
 
-	// consolidated, do not merge
-	if start_ts < rra1StartTs {
-		resp.Values = datas
-		goto _RETURN_OK
-	}
+		// read cached items
+		items, flag := store.GraphItems.FetchAll(key)
+		items_size := len(items)
 
-	// no cached items, do not merge
-	if items_size < 1 {
-		resp.Values = datas
-		goto _RETURN_OK
-	}
+		if cfg.Migrate.Enabled && flag&g.GRAPH_F_MISS != 0 {
+			node, _ := rrdtool.Consistent.Get(param.Endpoint + "/" + param.Counter)
+			done := make(chan error, 1)
+			res := &cmodel.GraphAccurateQueryResponse{}
+			rrdtool.Net_task_ch[node] <- &rrdtool.Net_task_t{
+				Method: rrdtool.NET_TASK_M_QUERY,
+				Done:   done,
+				Args:   param,
+				Reply:  res,
+			}
+			<-done
+			// fetch data from remote
+			datas = res.Values
+			datas_size = len(datas)
+		} else {
+			// read data from rrd file
+			// 从RRD中获取数据不包含起始时间点
+			// 例: start_ts=1484651400,step=60,则第一个数据时间为1484651460)
+			datas, _ = rrdtool.Fetch(filename, md5, param.ConsolFun, start_ts-int64(step), end_ts, step)
+			datas_size = len(datas)
+		}
 
-	// merge
-	{
-		// fmt cached items
-		var val cmodel.JsonFloat
-		cache := make([]*cmodel.RRDData, 0)
+		nowTs := time.Now().Unix()
+		lastUpTs := nowTs - nowTs%int64(step)
+		rra1StartTs := lastUpTs - int64(rrdtool.RRA1PointCnt*step)
 
-		ts := items[0].Timestamp
-		itemEndTs := items[items_size-1].Timestamp
-		itemIdx := 0
-		if dsType == g.DERIVE || dsType == g.COUNTER {
-			for ts < itemEndTs {
-				if itemIdx < items_size-1 && ts == items[itemIdx].Timestamp {
-					if ts == items[itemIdx+1].Timestamp-int64(step) && items[itemIdx+1].Value >= items[itemIdx].Value {
-						val = cmodel.JsonFloat(items[itemIdx+1].Value-items[itemIdx].Value) / cmodel.JsonFloat(step)
+		// consolidated, do not merge
+		if start_ts < rra1StartTs {
+			resp.Values = datas
+			goto _RETURN_OK
+		}
+
+		// no cached items, do not merge
+		if items_size < 1 {
+			resp.Values = datas
+			goto _RETURN_OK
+		}
+
+		// merge
+		{
+			// fmt cached items
+			var val cmodel.JsonFloat
+			cache := make([]*cmodel.RRDData, 0)
+
+			ts := items[0].Timestamp
+			itemEndTs := items[items_size-1].Timestamp
+			itemIdx := 0
+			if dsType == g.DERIVE || dsType == g.COUNTER {
+				for ts < itemEndTs {
+					if itemIdx < items_size-1 && ts == items[itemIdx].Timestamp {
+						if ts == items[itemIdx+1].Timestamp-int64(step) && items[itemIdx+1].Value >= items[itemIdx].Value {
+							val = cmodel.JsonFloat(items[itemIdx+1].Value-items[itemIdx].Value) / cmodel.JsonFloat(step)
+						} else {
+							val = cmodel.JsonFloat(math.NaN())
+						}
+						itemIdx++
 					} else {
+						// missing
 						val = cmodel.JsonFloat(math.NaN())
 					}
-					itemIdx++
-				} else {
-					// missing
-					val = cmodel.JsonFloat(math.NaN())
-				}
 
-				if ts >= start_ts && ts <= end_ts {
-					cache = append(cache, &cmodel.RRDData{Timestamp: ts, Value: val})
-				}
-				ts = ts + int64(step)
-			}
-		} else if dsType == g.GAUGE {
-			for ts <= itemEndTs {
-				if itemIdx < items_size && ts == items[itemIdx].Timestamp {
-					val = cmodel.JsonFloat(items[itemIdx].Value)
-					itemIdx++
-				} else {
-					// missing
-					val = cmodel.JsonFloat(math.NaN())
-				}
-
-				if ts >= start_ts && ts <= end_ts {
-					cache = append(cache, &cmodel.RRDData{Timestamp: ts, Value: val})
-				}
-				ts = ts + int64(step)
-			}
-		}
-		cache_size := len(cache)
-
-		// do merging
-		merged := make([]*cmodel.RRDData, 0)
-		if datas_size > 0 {
-			for _, val := range datas {
-				if val.Timestamp >= start_ts && val.Timestamp <= end_ts {
-					merged = append(merged, val) //rrdtool返回的数据,时间戳是连续的、不会有跳点的情况
-				}
-			}
-		}
-
-		if cache_size > 0 {
-			rrdDataSize := len(merged)
-			lastTs := cache[0].Timestamp
-
-			// find junction
-			rrdDataIdx := 0
-			for rrdDataIdx = rrdDataSize - 1; rrdDataIdx >= 0; rrdDataIdx-- {
-				if merged[rrdDataIdx].Timestamp < cache[0].Timestamp {
-					lastTs = merged[rrdDataIdx].Timestamp
-					break
-				}
-			}
-
-			// fix missing
-			for ts := lastTs + int64(step); ts < cache[0].Timestamp; ts += int64(step) {
-				merged = append(merged, &cmodel.RRDData{Timestamp: ts, Value: cmodel.JsonFloat(math.NaN())})
-			}
-
-			// merge cached items to result
-			rrdDataIdx += 1
-			for cacheIdx := 0; cacheIdx < cache_size; cacheIdx++ {
-				if rrdDataIdx < rrdDataSize {
-					if !math.IsNaN(float64(cache[cacheIdx].Value)) {
-						merged[rrdDataIdx] = cache[cacheIdx]
+					if ts >= start_ts && ts <= end_ts {
+						cache = append(cache, &cmodel.RRDData{Timestamp: ts, Value: val})
 					}
-				} else {
-					merged = append(merged, cache[cacheIdx])
+					ts = ts + int64(step)
 				}
-				rrdDataIdx++
-			}
-		}
-		mergedSize := len(merged)
+			} else if dsType == g.GAUGE {
+				for ts <= itemEndTs {
+					if itemIdx < items_size && ts == items[itemIdx].Timestamp {
+						val = cmodel.JsonFloat(items[itemIdx].Value)
+						itemIdx++
+					} else {
+						// missing
+						val = cmodel.JsonFloat(math.NaN())
+					}
 
-		// fmt result
-		ret_size := int((end_ts - start_ts) / int64(step))
-		if dsType == g.GAUGE {
-			ret_size += 1
-		}
-		ret := make([]*cmodel.RRDData, ret_size, ret_size)
-		mergedIdx := 0
-		ts = start_ts
-		for i := 0; i < ret_size; i++ {
-			if mergedIdx < mergedSize && ts == merged[mergedIdx].Timestamp {
-				ret[i] = merged[mergedIdx]
-				mergedIdx++
-			} else {
-				ret[i] = &cmodel.RRDData{Timestamp: ts, Value: cmodel.JsonFloat(math.NaN())}
+					if ts >= start_ts && ts <= end_ts {
+						cache = append(cache, &cmodel.RRDData{Timestamp: ts, Value: val})
+					}
+					ts = ts + int64(step)
+				}
 			}
-			ts += int64(step)
+			cache_size := len(cache)
+
+			// do merging
+			merged := make([]*cmodel.RRDData, 0)
+			if datas_size > 0 {
+				for _, val := range datas {
+					if val.Timestamp >= start_ts && val.Timestamp <= end_ts {
+						merged = append(merged, val) //rrdtool返回的数据,时间戳是连续的、不会有跳点的情况
+					}
+				}
+			}
+
+			if cache_size > 0 {
+				rrdDataSize := len(merged)
+				lastTs := cache[0].Timestamp
+
+				// find junction
+				rrdDataIdx := 0
+				for rrdDataIdx = rrdDataSize - 1; rrdDataIdx >= 0; rrdDataIdx-- {
+					if merged[rrdDataIdx].Timestamp < cache[0].Timestamp {
+						lastTs = merged[rrdDataIdx].Timestamp
+						break
+					}
+				}
+
+				// fix missing
+				for ts := lastTs + int64(step); ts < cache[0].Timestamp; ts += int64(step) {
+					merged = append(merged, &cmodel.RRDData{Timestamp: ts, Value: cmodel.JsonFloat(math.NaN())})
+				}
+
+				// merge cached items to result
+				rrdDataIdx += 1
+				for cacheIdx := 0; cacheIdx < cache_size; cacheIdx++ {
+					if rrdDataIdx < rrdDataSize {
+						if !math.IsNaN(float64(cache[cacheIdx].Value)) {
+							merged[rrdDataIdx] = cache[cacheIdx]
+						}
+					} else {
+						merged = append(merged, cache[cacheIdx])
+					}
+					rrdDataIdx++
+				}
+			}
+			mergedSize := len(merged)
+
+			// fmt result
+			ret_size := int((end_ts - start_ts) / int64(step))
+			if dsType == g.GAUGE {
+				ret_size += 1
+			}
+			ret := make([]*cmodel.RRDData, ret_size, ret_size)
+			mergedIdx := 0
+			ts = start_ts
+			for i := 0; i < ret_size; i++ {
+				if mergedIdx < mergedSize && ts == merged[mergedIdx].Timestamp {
+					ret[i] = merged[mergedIdx]
+					mergedIdx++
+				} else {
+					ret[i] = &cmodel.RRDData{Timestamp: ts, Value: cmodel.JsonFloat(math.NaN())}
+				}
+				ts += int64(step)
+			}
+			resp.Values = ret
 		}
-		resp.Values = ret
 	}
 
 _RETURN_OK:

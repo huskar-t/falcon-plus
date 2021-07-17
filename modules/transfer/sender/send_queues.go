@@ -45,10 +45,6 @@ func initSendQueues() {
 		InfluxdbQueue = nlist.NewSafeListLimited(DefaultSendQueueMaxSize)
 	}
 
-	if cfg.TDengine.Enabled {
-		TDengineQueue = nlist.NewSafeListLimited(DefaultSendQueueMaxSize)
-	}
-
 	if cfg.TDengineBLM.Enabled {
 		TDengineBLMQueue = nlist.NewSafeListLimited(DefaultSendQueueMaxSize)
 	}

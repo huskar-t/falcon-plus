@@ -43,18 +43,21 @@ var (
 	SendToGraphCnt    = nproc.NewSCounterQps("SendToGraphCnt")
 	SendToTransferCnt = nproc.NewSCounterQps("SendToTransferCnt")
 	SendToInfluxdbCnt = nproc.NewSCounterQps("SendToInfluxdbCnt")
+	SendToTDengineCnt = nproc.NewSCounterQps("SendToTDengineCnt")
 
 	SendToJudgeDropCnt    = nproc.NewSCounterQps("SendToJudgeDropCnt")
 	SendToTsdbDropCnt     = nproc.NewSCounterQps("SendToTsdbDropCnt")
 	SendToGraphDropCnt    = nproc.NewSCounterQps("SendToGraphDropCnt")
 	SendToTransferDropCnt = nproc.NewSCounterQps("SendToTransferDropCnt")
 	SendToInfluxdbDropCnt = nproc.NewSCounterQps("SendToTsdbDropCnt")
+	SendToTDengineDropCnt = nproc.NewSCounterQps("SendToTDengineDropCnt")
 
 	SendToJudgeFailCnt    = nproc.NewSCounterQps("SendToJudgeFailCnt")
 	SendToTsdbFailCnt     = nproc.NewSCounterQps("SendToTsdbFailCnt")
 	SendToGraphFailCnt    = nproc.NewSCounterQps("SendToGraphFailCnt")
 	SendToTransferFailCnt = nproc.NewSCounterQps("SendToTransferFailCnt")
 	SendToInfluxdbFailCnt = nproc.NewSCounterQps("SendToInfluxdbFailCnt")
+	SendToTDengineFailCnt = nproc.NewSCounterQps("SendToTDengineFailCnt")
 
 	// 发送缓存大小
 	JudgeQueuesCnt    = nproc.NewSCounterBase("JudgeSendCacheCnt")
@@ -94,6 +97,7 @@ func GetAll() []interface{} {
 	ret = append(ret, SendToInfluxdbCnt.Get())
 	ret = append(ret, SendToGraphCnt.Get())
 	ret = append(ret, SendToTransferCnt.Get())
+	ret = append(ret, SendToTDengineCnt.Get())
 
 	// drop cnt
 	ret = append(ret, SendToJudgeDropCnt.Get())
@@ -101,6 +105,7 @@ func GetAll() []interface{} {
 	ret = append(ret, SendToGraphDropCnt.Get())
 	ret = append(ret, SendToTransferDropCnt.Get())
 	ret = append(ret, SendToInfluxdbDropCnt.Get())
+	ret = append(ret, SendToTDengineDropCnt.Get())
 
 	// send fail cnt
 	ret = append(ret, SendToJudgeFailCnt.Get())
@@ -108,6 +113,7 @@ func GetAll() []interface{} {
 	ret = append(ret, SendToGraphFailCnt.Get())
 	ret = append(ret, SendToTransferFailCnt.Get())
 	ret = append(ret, SendToInfluxdbFailCnt.Get())
+	ret = append(ret, SendToTDengineFailCnt.Get())
 
 	// cache cnt
 	ret = append(ret, JudgeQueuesCnt.Get())

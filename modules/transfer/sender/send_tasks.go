@@ -16,8 +16,11 @@ package sender
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/juju/errors"
@@ -44,7 +47,6 @@ func startSendTasks() {
 	tsdbConcurrent := cfg.Tsdb.MaxConns
 	transferConcurrent := cfg.Transfer.MaxConns
 	influxdbConcurrent := cfg.Influxdb.MaxConns
-	tdengineConcurrent := cfg.TDengine.MaxConns
 	tdengineBlmConcurrent := cfg.TDengineBLM.MaxConns
 
 	if tsdbConcurrent < 1 {
@@ -91,10 +93,6 @@ func startSendTasks() {
 
 	if cfg.Influxdb.Enabled {
 		go forward2InfluxdbTask(influxdbConcurrent)
-	}
-
-	if cfg.TDengine.Enabled {
-		go forward2TDengineTask(tdengineConcurrent)
 	}
 
 	if cfg.TDengineBLM.Enabled {
@@ -318,12 +316,57 @@ func convert(v *cmodel.MetaData) *cmodel.MetricValue {
 	}
 }
 
-func forward2TDengineTask(concurrent int) {
-	log.Printf("%d", concurrent)
-}
-
 func forward2TDengineBLMTask(concurrent int) {
-	log.Printf("%d", concurrent)
+	batch := g.Config().TDengineBLM.Batch // 一次发送,最多batch条数据
+	retry := g.Config().TDengineBLM.MaxRetry
+	sema := nsema.NewSemaphore(concurrent)
+	address := g.Config().TDengineBLM.Address + "/openfalcon"
+	fmt.Println(address)
+	for {
+		items := TDengineBLMQueue.PopBackBy(batch)
+		if len(items) == 0 {
+			time.Sleep(DefaultSendTaskSleepInterval)
+			continue
+		}
+		//  同步Call + 有限并发 进行发送
+		sema.Acquire()
+		go func(itemList []interface{}) {
+			defer sema.Release()
+
+			var err error
+
+			items := make([]*cmodel.MetricValue, 0, len(itemList))
+			for _, i := range itemList {
+				items = append(items, i.(*cmodel.MetricValue))
+			}
+			d, err := json.Marshal(items)
+			if err != nil {
+				proc.SendToInfluxdbFailCnt.IncrBy(int64(len(itemList)))
+				log.Println(errors.ErrorStack(err))
+				return
+			}
+			req, err := http.NewRequest(http.MethodPost, address, bytes.NewReader(d))
+			if err != nil {
+				proc.SendToInfluxdbFailCnt.IncrBy(int64(len(itemList)))
+				log.Println(errors.ErrorStack(err))
+				return
+			}
+			var resp *http.Response
+			for i := 0; i < retry; i++ {
+				resp, err = http.DefaultClient.Do(req)
+				if err == nil {
+					proc.SendToTDengineCnt.IncrBy(int64(len(itemList)))
+					break
+				}
+			}
+			if err != nil {
+				proc.SendToTDengineFailCnt.IncrBy(int64(len(itemList)))
+				log.Println(err)
+				return
+			}
+			resp.Body.Close()
+		}(items)
+	}
 }
 
 func forward2InfluxdbTask(concurrent int) {
