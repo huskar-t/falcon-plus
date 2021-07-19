@@ -21,7 +21,8 @@ import (
 )
 
 func GenerateUUID() string {
-	sig := uuid.NewV1().String()
+	uid, _ := uuid.NewV1()
+	sig := uid.String()
 	sig = strings.Replace(sig, "-", "", -1)
 	return sig
 }
